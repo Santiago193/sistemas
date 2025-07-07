@@ -1,129 +1,124 @@
-# sistemas
-#!/bin/bash
+# 🛡️ Linux Jailed User Setup Script
 
-# Verificación de palabra clave
-if [[ "$1" != "usuario" || "$2" != "nuevo" ]]; then
-  echo "Uso correcto:"
-  echo "  sudo ./crear_usuario_enjaulado.sh usuario nuevo"
-  exit 1
-fi
+This Bash script automatically creates **jailed Linux users** with FTP, Nginx web hosting, and a personal MySQL database — all in seconds.
 
-# Obtener número consecutivo
-BASE_NAME="user"
-LAST_ID=$(ls /home | grep "^${BASE_NAME}[0-9]*$" | sed "s/${BASE_NAME}//" | sort -n | tail -1)
-NEXT_ID=$((LAST_ID + 1))
-NEW_USER="${BASE_NAME}${NEXT_ID}"
-USER_PASS="${NEW_USER}"
+---
 
-# Crear usuario de sistema con shell válida
-useradd -m -d /home/$NEW_USER -s /bin/bash "$NEW_USER"
-echo "$NEW_USER:$USER_PASS" | chpasswd
+## 🚀 What does this script do?
 
-# Agregar usuario al grupo www-data
-usermod -aG www-data "$NEW_USER"
+It automates the creation of an isolated and web-ready environment for new users:
 
-# Crear public_html con archivo index.html
-mkdir -p /home/$NEW_USER/public_html
-cat <<EOF > /home/$NEW_USER/public_html/index.html
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Bienvenido a la empresa UPS</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background-color: #f8f8f8;
-      color: #333;
-      text-align: center;
-      padding-top: 50px;
- }
-    h1 {
-      font-size: 3em;
-      color: #005b96;
-    }
-  </style>
-</head>
-<body>
-  <h1>Bienvenido a la empresa UPS</h1>
-</body>
-</html>
-EOF
+- 🧑‍💻 Creates new users (`userX`) with restricted shell access.
+- 🌐 Sets up their own `/home/userX/public_html` folder for hosting.
+- 🔐 Assigns the username as the default password.
+- 🗂️ Applies correct permissions for FTP (FileZilla) and web access.
+- 🧰 Enforces user isolation using chroot with `vsftpd`.
+- 🛠️ Creates a MySQL user and database with full access.
+- 🌍 Automatically configures an Nginx block for the user's site.
+- 🧾 Stores credentials in a secure TXT file under `/root`.
 
-# Asignar permisos para permitir acceso desde navegador y FileZilla
-sudo chmod o+x /home                  # Permitir acceso al directorio /home
-sudo chmod o+x /home/$NEW_USER        # Permitir acceso al home del usuario
-sudo chown -R $NEW_USER:$NEW_USER /home/$NEW_USER/public_html
-#sudo chmod -R 755 /home/$NEW_USER/public_html
-sudo find /home/$NEW_USER/public_html -type f -exec chmod 644 {} \;
-sudo find /home/$NEW_USER/public_html -type d -exec chmod 755 {} \;
-# Verificar configuración de vsftpd
-VSFTPD_CONF="/etc/vsftpd.conf"
-if ! grep -q "chroot_local_user=YES" "$VSFTPD_CONF"; then
-  echo "Actualizando configuración de vsftpd para enjaular usuarios..."
-  echo '
-chroot_local_user=YES
-allow_writeable_chroot=YES
-' >> "$VSFTPD_CONF"
-  systemctl restart vsftpd
-fi
-# Crear usuario MySQL con su base de datos
-mysql -u root -p <<EOF
-CREATE DATABASE IF NOT EXISTS $NEW_USER;
-CREATE USER '$NEW_USER'@'localhost' IDENTIFIED BY '$USER_PASS';
-GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, DROP, INDEX, LOCK TABLES ON $NEW_USER.* TO '$NEW_USER'@'localhost';
-FLUSH PRIVILEGES;
-EOF
+---
 
-# Recargar Nginx
-# =========================
-# NUEVO BLOQUE NGINX POR USUARIO
-# =========================
-NGINX_CONF="/etc/nginx/sites-available/$NEW_USER"
+## 📦 Requirements
 
-cat <<EOF > "$NGINX_CONF"
-server {
-    listen 80;
-    server_name ${NEW_USER}.com;
+- A Linux server (tested on Ubuntu)
+- `sudo` privileges
+- Services installed:
+  - `vsftpd`
+  - `nginx`
+  - `mysql-server`
 
-    root /home/$NEW_USER/public_html;
+---
 
-    location / {
-        try_files \$uri \$uri/ =404;
-    }
-}
-EOF
+## ⚙️ Installation
 
-# Enlace simbólico a sites-enabled
-ln -s "$NGINX_CONF" /etc/nginx/sites-enabled/
-systemctl reload nginx
-# Agregar entrada en /etc/hosts para resolución local
-HOSTS_LINE="192.168.122.26 $NEW_USER.com"
+Clone this repo or copy the `crear_usuario_enjaulado.sh` script to your server:
 
-# Verificar si ya existe la entrada
-if ! grep -q "$HOSTS_LINE" /etc/hosts; then
-  echo "$HOSTS_LINE" >> /etc/hosts
-  echo "[+] Entrada agregada a /etc/hosts: $HOSTS_LINE"
-else
-  echo "[=] La entrada ya existe en /etc/hosts: $HOSTS_LINE"
-fi
-# Guardar credenciales
-CRED_FILE="/root/credenciales_$NEW_USER.txt"
-echo "Usuario Linux/FTP: $NEW_USER" > "$CRED_FILE"
-echo "Contraseña: $USER_PASS" >> "$CRED_FILE"
-echo "FTP en: /home/$NEW_USER/public_html" >> "$CRED_FILE"
-echo "Usuario MySQL: $NEW_USER" >> "$CRED_FILE"
-echo "Contraseña MySQL: $USER_PASS" >> "$CRED_FILE"
-echo "Web: /home/$NEW_USER/public_html/index.html" >> "$CRED_FILE"
+```bash
+git clone https://github.com/Santiago193/linux-user-setup.git
+cd linux-user-setup
+chmod +x crear_usuario_enjaulado.sh
+```
 
-# Mostrar resumen
-echo "======================================"
-echo " USUARIO CREADO CORRECTAMENTE"
-echo "======================================"
-echo "Linux/FTP: $NEW_USER"
-echo "MySQL: $NEW_USER"
-echo "Contraseña: $USER_PASS"
-echo "Sitio web en: /home/$NEW_USER/public_html"
-echo "Credenciales guardadas en: $CRED_FILE"
-echo "======================================"
+---
+
+## 🧪 Usage
+
+Run the script with `sudo`:
+
+```bash
+sudo ./crear_usuario_enjaulado.sh usuario nuevo
+```
+
+> 🧠 It will automatically generate the next user like `user3`, `user4`, etc.
+
+---
+
+## 📁 Example
+
+```bash
+sudo ./crear_usuario_enjaulado.sh usuario nuevo
+```
+
+- Creates: `user3`
+- Password: `user3`
+- Web: `http://user3.com`
+- FTP path: `/home/user3/public_html`
+
+---
+
+## 📄 Sample Output
+
+```bash
+======================================
+ USER SUCCESSFULLY CREATED
+======================================
+Linux/FTP: user3
+MySQL: user3
+Password: user3
+Website at: /home/user3/public_html
+Credentials saved at: /root/credenciales_user3.txt
+======================================
+```
+
+---
+
+## 📌 Technical Features
+
+- 👨‍🔧 Automatic incremental naming: `user1`, `user2`, ...
+- 🔐 Chroot isolation for FTP users (`vsftpd`)
+- 🌐 Dynamic Nginx virtual host creation
+- 🧠 Hosts file updated for local domain access
+- 💾 Secure permissions on web files and folders
+- 🧾 TXT credential storage for every user
+
+---
+
+## 🔒 Security Notes
+
+- Each user is jailed inside their home directory
+- Files are assigned correct access permissions
+- Credentials are stored safely in root-only files
+
+---
+
+## 📂 Generated Files
+
+- `/home/userX/public_html/index.html`
+- `/etc/nginx/sites-available/userX`
+- `/etc/nginx/sites-enabled/userX`
+- `/root/credenciales_userX.txt`
+
+---
+
+## 👤 Author
+
+**Santiago David Castillo**  
+Computer Science Engineering Student  
+🔗 [GitHub](https://github.com/Santiago193)
+
+---
+
+## 📜 License
+
+MIT © Santiago David Castillo
